@@ -1,0 +1,9 @@
+[project]
+name = "cutoutnet-training"
+version = "0.1.0"
+description = "Training pipeline for CutoutNet foreground extraction network"
+requires-python = ">=3.11,<3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

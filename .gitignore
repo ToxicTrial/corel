@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Datasets and generated training data: NEVER commit
+# Keep only placeholder files so a fresh clone has the expected folders.
+data/raw/**
+!data/raw/.gitkeep
+
+data/cutoutnet/**
+!data/cutoutnet/manifests/
+!data/cutoutnet/manifests/.gitkeep
+!data/cutoutnet/cutouts/
+!data/cutoutnet/cutouts/.gitkeep
+!data/cutoutnet/backgrounds/
+!data/cutoutnet/backgrounds/.gitkeep
+
+# Model weights/checkpoints
+checkpoints/**
+!checkpoints/cutoutnet/
+!checkpoints/cutoutnet/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# Logs / experiment outputs
+runs/
+wandb/
+logs/
+output/
+outputs/
+benchmark_results/
+*.log
+
+# Archives and large binaries
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+# Temp
+*.tmp
+*.bak
