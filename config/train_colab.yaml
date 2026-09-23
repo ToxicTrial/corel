@@ -1,0 +1,47 @@
+seed: 1337
+device: cuda
+
+model:
+  backbone: convnext_tiny
+  pretrained_backbone: true
+  decoder_channels: 128
+  simple_encoder_base: 48
+
+data:
+  train_root: data/cutoutnet/manifests/train.jsonl
+  val_root: data/cutoutnet/manifests/val.jsonl
+  image_size: 640
+  targets:
+    boundary_width: 2
+    detail_width: 4
+    residual_bg_width: 12
+    uncertainty_width: 6
+
+train:
+  epochs: 30
+  batch_size: 2
+  val_batch_size: 1
+  workers: 2
+  persistent_workers: true
+  prefetch_factor: 2
+  lr: 0.0002
+  min_lr: 0.000001
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  amp: true
+  freeze_encoder_epochs: 1
+  grad_accum_steps: 2
+  val_every_epochs: 1
+  save_every_epochs: 1
+  resume: auto
+  # Change this in Colab to a mounted Google Drive path.
+  output_dir: checkpoints/cutoutnet_colab
+
+loss_weights:
+  final: 1.00
+  foreground: 0.70
+  boundary: 0.80
+  detail: 0.65
+  residual_background: 0.65
+  uncertainty: 0.30
+  objectness: 0.30
