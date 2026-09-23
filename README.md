@@ -78,3 +78,7 @@ git ls-files
 ```
 
 Вес `best.pt` также не коммитится. Его нужно переносить отдельно либо прикладывать к GitHub Release после обучения.
+
+Cloud portability fixes in v0.2.4:
+- manifests keep project-relative paths through data/raw symlinks
+- dataset loader remaps stale Windows and previous Colab absolute paths
