@@ -16,6 +16,47 @@ from .targets import build_targets
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
+def _resolve_manifest_path(raw: str, project_root: Path) -> Path:
+    """Resolve manifest paths across Windows/local/Colab relocations.
+
+    New manifests use project-relative paths, but older manifests may contain a
+    Windows absolute path or an ephemeral ``/content/...`` path created by a
+    previous Colab session.  When that original path is gone, remap the stable
+    dataset suffix under the current project's data/ tree.
+    """
+    raw_s = str(raw)
+    normalized = raw_s.replace("\\", "/")
+
+    direct = Path(raw_s)
+    if direct.is_absolute() and direct.exists():
+        return direct
+    if not direct.is_absolute():
+        candidate = project_root / direct
+        if candidate.exists():
+            return candidate
+
+    # Portable anchors used by CutoutNet's dataset manager.
+    for anchor in ("data/raw/", "data/cutoutnet/"):
+        pos = normalized.lower().find(anchor)
+        if pos >= 0:
+            candidate = project_root / normalized[pos:]
+            if candidate.exists():
+                return candidate
+
+    # Legacy cloud manifests sometimes resolved the data/raw/P3M-10k symlink and
+    # stored /content/.../P3M-10k/... instead. Reattach to the current symlink.
+    for dataset_name in ("P3M-10k", "AM-2K", "AIM-500"):
+        token = f"/{dataset_name}/"
+        pos = normalized.lower().find(token.lower())
+        if pos >= 0:
+            suffix = normalized[pos + len(token):]
+            candidate = project_root / "data" / "raw" / dataset_name / suffix
+            if candidate.exists():
+                return candidate
+
+    return project_root / direct
+
+
 def _match_pairs(image_dir: Path, mask_dir: Path) -> list[tuple[Path, Path]]:
     masks = {p.stem: p for p in mask_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS}
     pairs = []
@@ -87,9 +128,8 @@ class PairedCutoutDataset(Dataset):
                 if not line.strip():
                     continue
                 row = json.loads(line)
-                img = Path(row["image"]); mask = Path(row["mask"])
-                if not img.is_absolute(): img = project_root / img
-                if not mask.is_absolute(): mask = project_root / mask
+                img = _resolve_manifest_path(row["image"], project_root)
+                mask = _resolve_manifest_path(row["mask"], project_root)
                 if img.exists() and mask.exists():
                     self.pairs.append((img, mask))
         else:
