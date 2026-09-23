@@ -46,9 +46,17 @@ SOURCES = {
 
 
 def rel_or_abs(p: Path) -> str:
-    p = p.resolve()
+    """Store portable project-relative paths whenever possible.
+
+    Deliberately do NOT call ``resolve()`` here: on Colab a dataset is commonly
+    attached through ``data/raw/...`` symlinks. Resolving the symlink would bake
+    an ephemeral ``/content/...`` target into manifests and make them invalid on
+    the next cloud session.
+    """
+    p = p.absolute()
+    root = ROOT.absolute()
     try:
-        return p.relative_to(ROOT.resolve()).as_posix()
+        return p.relative_to(root).as_posix()
     except Exception:
         return str(p)
 
@@ -144,7 +152,6 @@ def import_aim(root: Path, items: list[dict]):
     mask_dir = root / "mask"
     if not image_dir.exists() or not mask_dir.exists():
         raise FileNotFoundError("AIM-500 must contain original/ and mask/")
-    # AIM-500 is intentionally kept out of training as an external generalization test.
     add_pairs(items, "aim500", pair_dirs(image_dir, mask_dir), lambda _s: "test", ["natural", "animal", "plant", "transparent", "external-test"], src["license"])
 
 
@@ -230,14 +237,6 @@ def _fmt_eta(seconds: float) -> str:
 
 
 def qa(items: list[dict], sample_limit: int = 0, stats_max_side: int = 1024, progress_every: int = 10):
-    """Validate dataset pairs with visible progress and bounded-cost statistics.
-
-    The old QA fully decoded every RGB image and ran connected-components on the
-    original alpha resolution without printing progress. On large P3M datasets this
-    looked frozen for a long time. This version reads only image metadata for size
-    checks, downsamples masks for component/statistics analysis, prints ETA, and
-    writes a machine-readable report.
-    """
     rows = items[:]
     if sample_limit and len(rows) > sample_limit:
         rows = random.Random(1337).sample(rows, sample_limit)
@@ -262,8 +261,6 @@ def qa(items: list[dict], sample_limit: int = 0, stats_max_side: int = 1024, pro
                     bad.append((item["id"], f"image missing: {ip}")); continue
                 if not mp.exists():
                     bad.append((item["id"], f"mask missing: {mp}")); continue
-
-                # PIL can read dimensions from headers without decoding the full RGB raster.
                 with Image.open(ip) as im:
                     image_size = im.size
                     im.verify()
@@ -272,9 +269,6 @@ def qa(items: list[dict], sample_limit: int = 0, stats_max_side: int = 1024, pro
                     am.verify()
                 if mask_size != image_size:
                     bad.append((item["id"], f"size mismatch image={image_size} mask={mask_size}")); continue
-
-                # Decode only the mask for semantic QA. Bound connected-component cost
-                # by using a nearest-neighbour thumbnail for very large mattes.
                 with Image.open(mp) as am:
                     am = am.convert("L")
                     w, h = am.size
@@ -301,10 +295,7 @@ def qa(items: list[dict], sample_limit: int = 0, stats_max_side: int = 1024, pro
                     eta = (total - idx) / rate if rate > 0 else float('inf')
                     pct = idx * 100.0 / total
                     current = item.get("id", "?")
-                    print(
-                        f"QA [{idx:>5}/{total}] {pct:6.2f}% | {rate:5.1f} files/s | ETA {_fmt_eta(eta)} | bad={len(bad)} | {current}",
-                        flush=True,
-                    )
+                    print(f"QA [{idx:>5}/{total}] {pct:6.2f}% | {rate:5.1f} files/s | ETA {_fmt_eta(eta)} | bad={len(bad)} | {current}", flush=True)
     except KeyboardInterrupt:
         print("\nQA interrupted by user. Partial report will be saved.", flush=True)
 
@@ -322,11 +313,7 @@ def qa(items: list[dict], sample_limit: int = 0, stats_max_side: int = 1024, pro
     print(f"QA checked: {len(fg_fracs) + len(bad)} / {total}")
     print(f"Bad: {len(bad)}")
     if fg_fracs:
-        stats = {
-            "median": float(np.median(fg_fracs)),
-            "p05": float(np.quantile(fg_fracs, .05)),
-            "p95": float(np.quantile(fg_fracs, .95)),
-        }
+        stats = {"median": float(np.median(fg_fracs)), "p05": float(np.quantile(fg_fracs, .05)), "p95": float(np.quantile(fg_fracs, .95))}
         report["foreground_fraction"] = stats
         print(f"FG fraction median={stats['median']:.3f}, p05={stats['p05']:.3f}, p95={stats['p95']:.3f}")
     if components:
@@ -363,11 +350,7 @@ def status(items: list[dict]):
 
 def auto_import(items: list[dict]):
     errors = []
-    for fn, path in [
-        (import_p3m, RAW / "P3M-10k"),
-        (import_aim, RAW / "AIM-500"),
-        (import_am2k, RAW / "AM-2K"),
-    ]:
+    for fn, path in [(import_p3m, RAW / "P3M-10k"), (import_aim, RAW / "AIM-500"), (import_am2k, RAW / "AM-2K")]:
         try:
             fn(path, items)
         except Exception as e:
@@ -389,7 +372,7 @@ def open_links():
 
 def wizard():
     print("\nCutoutNet Dataset Wizard")
-    print("========================")
+    print("=========================")
     print("Recommended first dataset: P3M-10K. Then AM-2K. AIM-500 is kept for TEST only.\n")
     while True:
         print("1 - Open official download/license pages")
