@@ -34,8 +34,8 @@ train:
   val_every_epochs: 1
   save_every_epochs: 1
   resume: auto
-  # Change this in Colab to a mounted Google Drive path.
-  output_dir: checkpoints/cutoutnet_colab
+  # Colab: mount Google Drive before training. Checkpoints persist across runtime resets.
+  output_dir: /content/drive/MyDrive/CutoutNet/checkpoints/t4_640
 
 loss_weights:
   final: 1.00
