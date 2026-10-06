@@ -274,7 +274,8 @@ def train(config_path: str = "config/train.yaml") -> None:
 
         history.append(rec)
 
-        if metrics["dice"] > state.best_dice:
+        is_best = metrics["dice"] > state.best_dice
+        if is_best:
             state.best_dice = metrics["dice"]
             best = {
                 "format": "cutoutnet-v0",
@@ -300,6 +301,9 @@ def train(config_path: str = "config/train.yaml") -> None:
             "history": history,
             "config": cfg,
         }
+        if is_best:
+            _atomic_torch_save(full_checkpoint, out_dir / "best_full.pt")
+
         if epoch % save_every == 0 or epoch == epochs:
             _atomic_torch_save(full_checkpoint, out_dir / "last_full.pt")
             # Lightweight inference last checkpoint as well.
