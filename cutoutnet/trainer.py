@@ -159,6 +159,7 @@ def train(config_path: str = "config/train.yaml") -> None:
     save_every = max(1, int(cfg["train"].get("save_every_epochs", 1)))
     val_every = max(1, int(cfg["train"].get("val_every_epochs", 1)))
     grad_clip = float(cfg["train"].get("grad_clip", 1.0))
+    max_nonfinite = max(1, int(cfg["train"].get("max_nonfinite_batches", 3)))
 
     print(f"Training samples: {len(train_ds)} | validation: {len(val_ds)}")
     print(f"image_size={data_cfg['image_size']} batch={cfg['train'].get('batch_size', 2)} accum={accum_steps} effective_batch={int(cfg['train'].get('batch_size',2))*accum_steps}")
@@ -168,6 +169,8 @@ def train(config_path: str = "config/train.yaml") -> None:
         model.freeze_encoder(epoch <= freeze_epochs)
         model.train()
         running = 0.0
+        finite_batches = 0
+        nonfinite_batches = 0
         optimizer.zero_grad(set_to_none=True)
         bar = tqdm(train_loader, desc=f"train {epoch}/{epochs}")
         for step, batch in enumerate(bar, 1):
@@ -177,18 +180,50 @@ def train(config_path: str = "config/train.yaml") -> None:
                 pred = model(image)
                 total, _parts = loss_fn(pred, targets)
                 scaled_total = total / accum_steps
+
+            if not torch.isfinite(total):
+                nonfinite_batches += 1
+                optimizer.zero_grad(set_to_none=True)
+                print(
+                    f"\nWARNING: non-finite loss at epoch={epoch} step={step}; "
+                    f"skipping batch ({nonfinite_batches}/{max_nonfinite})",
+                    flush=True,
+                )
+                if nonfinite_batches >= max_nonfinite:
+                    raise RuntimeError(
+                        "Training stopped before checkpoint overwrite: repeated NaN/Inf loss. "
+                        "Resume from best.pt with a lower learning rate."
+                    )
+                continue
+
             scaler.scale(scaled_total).backward()
 
             do_step = step % accum_steps == 0 or step == len(train_loader)
             if do_step:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                if not torch.isfinite(grad_norm):
+                    nonfinite_batches += 1
+                    optimizer.zero_grad(set_to_none=True)
+                    scaler.update()
+                    print(
+                        f"\nWARNING: non-finite gradient norm at epoch={epoch} step={step}; "
+                        f"optimizer step skipped ({nonfinite_batches}/{max_nonfinite})",
+                        flush=True,
+                    )
+                    if nonfinite_batches >= max_nonfinite:
+                        raise RuntimeError(
+                            "Training stopped before checkpoint overwrite: repeated NaN/Inf gradients. "
+                            "Resume from best.pt with a lower learning rate."
+                        )
+                    continue
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
 
             loss_value = float(total.detach().cpu())
             running += loss_value
+            finite_batches += 1
             if device.type == "cuda":
                 mem = torch.cuda.max_memory_allocated() / 1024**3
                 bar.set_postfix(loss=f"{loss_value:.4f}", vram=f"{mem:.1f}G")
@@ -222,16 +257,24 @@ def train(config_path: str = "config/train.yaml") -> None:
 
         rec = {
             "epoch": epoch,
-            "train_loss": running / max(1, len(train_loader)),
+            "train_loss": running / max(1, finite_batches),
             "val_loss": val_loss,
             **metrics,
             "lr": optimizer.param_groups[0]["lr"],
             "time": time.time(),
         }
-        history.append(rec)
         print(json.dumps(rec, indent=2))
 
-        if not np.isnan(metrics["dice"]) and metrics["dice"] > state.best_dice:
+        critical_values = [rec["train_loss"], rec["val_loss"], rec["dice"], rec["iou"]]
+        if not all(np.isfinite(float(v)) for v in critical_values):
+            raise RuntimeError(
+                "Non-finite epoch metrics detected. The previous good checkpoint was NOT overwritten. "
+                "Recover from best.pt or the previous last_full.pt."
+            )
+
+        history.append(rec)
+
+        if metrics["dice"] > state.best_dice:
             state.best_dice = metrics["dice"]
             best = {
                 "format": "cutoutnet-v0",
