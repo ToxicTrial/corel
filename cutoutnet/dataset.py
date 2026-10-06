@@ -98,7 +98,7 @@ def _augment(rgb: np.ndarray, mask: np.ndarray, rng: random.Random) -> tuple[np.
         pil = ImageEnhance.Contrast(pil).enhance(rng.uniform(0.82, 1.22))
     if rng.random() < 0.55:
         pil = ImageEnhance.Color(pil).enhance(rng.uniform(0.70, 1.30))
-    rgb = np.asarray(pil, dtype=np.uint8)
+    rgb = np.array(pil, dtype=np.uint8, copy=True)
 
     # Mild JPEG-like blur/noise makes edge learning less dependent on pristine masks.
     if rng.random() < 0.18:
@@ -158,7 +158,10 @@ class PairedCutoutDataset(Dataset):
             rgb, mask = _augment(rgb, mask, rng)
 
         targets_np = build_targets(mask, self.target_cfg)
-        image = torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1).float() / 255.0
+        # Force an owned, writable C-contiguous array. Some PIL/NumPy augmentation
+        # paths can return a read-only view, which torch.from_numpy warns about.
+        rgb = np.array(rgb, dtype=np.uint8, copy=True, order="C")
+        image = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
         # ImageNet normalization keeps pretrained encoders useful.
         mean = torch.tensor([0.485, 0.456, 0.406])[:, None, None]
         std = torch.tensor([0.229, 0.224, 0.225])[:, None, None]
