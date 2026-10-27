@@ -56,3 +56,7 @@ benchmark_results/
 # Temp
 *.tmp
 *.bak
+
+# v0.4 additional private training datasets
+data/instances/**
+data/color/**
