@@ -1,0 +1,48 @@
+seed: 1337
+device: auto
+model:
+  backbone: convnext_tiny
+  pretrained_backbone: false
+  decoder_channels: 128
+  simple_encoder_base: 48
+data:
+  train_root: data/cutoutnet/manifests/train.jsonl
+  val_root: data/cutoutnet/manifests/val.jsonl
+  image_size: 640
+  targets:
+    boundary_width: 2
+    detail_width: 4
+    residual_bg_width: 12
+    uncertainty_width: 6
+train:
+  # Fresh fine-tune optimizer loaded from existing stage-1 weights;
+  # previous optimizer checkpoint remains intact.
+  init_checkpoint: checkpoints/cutoutnet/best.pt
+  resume: auto
+  epochs: 15
+  batch_size: 2
+  val_batch_size: 1
+  workers: 2
+  grad_accum_steps: 2
+  lr: 0.00002
+  min_lr: 0.000001
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  amp: false
+  freeze_encoder_epochs: 0
+  val_every_epochs: 1
+  save_every_epochs: 1
+  output_dir: checkpoints/sticker
+sticker_loss:
+  enabled: true
+  edge_weight: 0.3
+  topology_weight: 0.12
+  skeleton_iterations: 8
+loss_weights:
+  final: 1.00
+  foreground: 0.70
+  boundary: 0.80
+  detail: 0.65
+  residual_background: 0.65
+  uncertainty: 0.30
+  objectness: 0.30

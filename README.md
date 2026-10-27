@@ -82,3 +82,7 @@ git ls-files
 Cloud portability fixes in v0.2.4:
 - manifests keep project-relative paths through data/raw symlinks
 - dataset loader remaps stale Windows and previous Colab absolute paths
+
+## CutoutNet v0.4
+
+Общая система наклеек, InstanceNet, ColorCleanNet, обучаемая доработка Refiner на реальных ошибках, soft-clDice и команда `cutout_v04.py` описаны в [README_V04_RU.md](README_V04_RU.md). Все дополнительные обучаемые сети требуют собственных весов; старые checkpoints не затронуты.

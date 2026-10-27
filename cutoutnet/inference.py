@@ -187,7 +187,7 @@ class CutoutPipeline:
         regions = select_rois(risk, patch=self.patch, overlap=self.overlap, max_rois=self.max_rois) if self.refiner else []
         probability = maps["final"]
         if self.refiner and regions:
-            probability = weighted_refine(probability, maps["uncertainty"], rgb, regions, self.refiner, self.device)
+            probability = weighted_refine(probability, risk, rgb, regions, self.refiner, self.device)
         alpha = binary_alpha(probability, self.threshold)
         return Result(rgb=rgb, alpha=alpha, probability=probability, risk=risk,
                       regions=regions, checkpoint_epoch=self.epoch, refiner_used=bool(self.refiner and regions))

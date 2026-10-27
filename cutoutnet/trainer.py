@@ -81,6 +81,20 @@ def train(config_path: str = "config/train.yaml") -> None:
 
     model_cfg = dict(cfg["model"])
     model = CutoutNet(**model_cfg).to(device)
+    # Optional stage-2 fine-tune: load only trained model parameters and begin
+    # a fresh optimizer in a DIFFERENT output directory from the original run.
+    initial_weights = cfg.get("train", {}).get("init_checkpoint")
+    prospective_out = Path(cfg["train"].get("output_dir", "checkpoints/cutoutnet")).expanduser()
+    current_resume = _resolve_resume(cfg, prospective_out)
+    if initial_weights and current_resume is None:
+        source = Path(str(initial_weights)).expanduser()
+        if not source.is_file():
+            raise FileNotFoundError(f"Fine-tune model checkpoint not found: {source}")
+        initial_ckpt = torch.load(source, map_location="cpu", weights_only=False)
+        if "model" not in initial_ckpt:
+            raise ValueError("init_checkpoint must contain CutoutNet model weights")
+        model.load_state_dict(initial_ckpt["model"], strict=True)
+        print(f"Fine-tuning trained CutoutNet parameters from: {source}", flush=True)
     data_cfg = cfg["data"]
     train_ds = PairedCutoutDataset(
         data_cfg["train_root"],
@@ -117,7 +131,18 @@ def train(config_path: str = "config/train.yaml") -> None:
         **loader_kwargs,
     )
 
-    loss_fn = CutoutNetLoss(cfg.get("loss_weights"))
+    sticker_cfg = cfg.get("sticker_loss", {})
+    if bool(sticker_cfg.get("enabled", False)):
+        from .advanced_losses import StickerLoss
+        loss_fn = StickerLoss(
+            cfg.get("loss_weights"),
+            edge_weight=float(sticker_cfg.get("edge_weight", 0.3)),
+            topology_weight=float(sticker_cfg.get("topology_weight", 0.12)),
+            skeleton_iterations=int(sticker_cfg.get("skeleton_iterations", 8)),
+        )
+        print("StickerLoss enabled: boundary weighted BCE + soft-clDice", flush=True)
+    else:
+        loss_fn = CutoutNetLoss(cfg.get("loss_weights"))
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(cfg["train"].get("lr", 2e-4)),
